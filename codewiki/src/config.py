@@ -83,6 +83,10 @@ class Config:
     # Prompt caching for agentic/multi-turn calls (auto-disables per model if
     # the provider rejects cache_control markers)
     prompt_caching: bool = True
+    # Number of times an agent may retry a tool call whose arguments fail
+    # validation before giving up. Higher values help weaker/local models that
+    # frequently emit malformed tool arguments (default: 3).
+    max_retries: int = 3
     # Agent instructions for customization
     agent_instructions: Optional[Dict[str, Any]] = None
     # Apply Git ignore rules before dependency analysis
@@ -193,6 +197,7 @@ class Config:
         agent_instructions: Optional[Dict[str, Any]] = None,
         use_gitignore: bool = True,
         prompt_caching: bool = True,
+        max_retries: int = 3,
     ) -> 'Config':
         """
         Create configuration for CLI context.
@@ -221,6 +226,7 @@ class Config:
             agent_instructions: Custom agent instructions dict
             use_gitignore: Whether to apply Git ignore rules
             prompt_caching: Whether to add prompt-cache breakpoints to agentic calls
+            max_retries: Tool-call retries allowed per agent before giving up
 
         Returns:
             Config instance
@@ -251,4 +257,5 @@ class Config:
             agent_instructions=agent_instructions,
             use_gitignore=use_gitignore,
             prompt_caching=prompt_caching,
+            max_retries=max_retries,
         )
