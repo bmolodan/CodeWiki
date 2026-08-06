@@ -124,6 +124,8 @@ class Configuration:
         use_gitignore: Apply Git ignore rules during repository analysis
         prompt_caching: Add prompt-cache breakpoints to agentic LLM calls (default: True)
         max_retries: Tool-call retries allowed per agent before giving up (default: 3)
+        disable_thinking: Turn off reasoning/thinking mode for hybrid-thinking
+            models such as Qwen3 (default: True)
         agent_instructions: Custom agent instructions for documentation generation
     """
     base_url: str
@@ -142,6 +144,7 @@ class Configuration:
     use_gitignore: bool = True
     prompt_caching: bool = True
     max_retries: int = 3
+    disable_thinking: bool = True
     agent_instructions: AgentInstructions = field(default_factory=AgentInstructions)
     
     def validate(self):
@@ -181,6 +184,7 @@ class Configuration:
             'use_gitignore': self.use_gitignore,
             'prompt_caching': self.prompt_caching,
             'max_retries': self.max_retries,
+            'disable_thinking': self.disable_thinking,
             'fallback_model': self.fallback_model,
         }
         if self.agent_instructions and not self.agent_instructions.is_empty():
@@ -219,6 +223,7 @@ class Configuration:
             use_gitignore=data.get('use_gitignore', True),
             prompt_caching=data.get('prompt_caching', True),
             max_retries=data.get('max_retries', 3),
+            disable_thinking=data.get('disable_thinking', True),
             agent_instructions=agent_instructions,
         )
     
@@ -289,4 +294,5 @@ class Configuration:
             use_gitignore=self.use_gitignore,
             prompt_caching=self.prompt_caching,
             max_retries=self.max_retries,
+            disable_thinking=self.disable_thinking,
         )

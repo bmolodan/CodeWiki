@@ -151,6 +151,7 @@ class CLIDocumentationGenerator:
                 use_gitignore=self.config.get('use_gitignore', True),
                 prompt_caching=self.config.get('prompt_caching', True),
                 max_retries=self.config.get('max_retries', 3),
+                disable_thinking=self.config.get('disable_thinking', True),
             )
             
             # Run backend documentation generation

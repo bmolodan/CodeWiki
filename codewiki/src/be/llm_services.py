@@ -72,6 +72,37 @@ def _should_use_max_completion_tokens(model_name: str, base_url: str) -> bool:
     return False
 
 
+def _thinking_disabled_extra_body() -> dict:
+    """Request-body fields that ask the server to turn off reasoning/thinking.
+
+    ``chat_template_kwargs.enable_thinking`` is the switch honored by hybrid
+    thinking models (e.g. Qwen3) served via vLLM, SGLang, llama.cpp and
+    LM Studio; the top-level ``enable_thinking`` covers DashScope-style
+    endpoints. Servers that don't recognize these fields ignore them.
+    """
+    return {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "enable_thinking": False,
+    }
+
+
+def _thinking_toggle_supported(config: Config) -> bool:
+    """Whether it's safe to send the thinking-off ``extra_body`` for this config.
+
+    First-party APIs (OpenAI, Azure OpenAI, Bedrock, Anthropic) reject unknown
+    request fields, and none of them serve hybrid Qwen-style thinking models, so
+    injection is skipped there. Local / self-hosted OpenAI-compatible servers
+    and proxies (vLLM, SGLang, llama.cpp, LiteLLM, Ollama, etc.) either honor or
+    ignore the fields.
+    """
+    if config.provider in ("azure-openai", "bedrock", "anthropic"):
+        return False
+    base_url = (config.llm_base_url or "").lower()
+    if "api.openai.com" in base_url or ".openai.azure.com" in base_url:
+        return False
+    return True
+
+
 def _build_model_settings(config: Config, model_name: str) -> OpenAIChatModelSettings:
     """Build model settings with the correct token parameter.
 
@@ -80,12 +111,16 @@ def _build_model_settings(config: Config, model_name: str) -> OpenAIChatModelSet
     provider default.
     """
     if _should_use_max_completion_tokens(model_name, config.llm_base_url):
-        return OpenAIChatModelSettings(
+        settings = OpenAIChatModelSettings(
             max_completion_tokens=config.max_tokens
         )
-    return OpenAIChatModelSettings(
-        max_tokens=config.max_tokens
-    )
+    else:
+        settings = OpenAIChatModelSettings(
+            max_tokens=config.max_tokens
+        )
+    if getattr(config, "disable_thinking", False) and _thinking_toggle_supported(config):
+        settings["extra_body"] = _thinking_disabled_extra_body()
+    return settings
 
 
 def _get_litellm_model_name(model_name: str, provider: str) -> str:
@@ -346,6 +381,8 @@ def call_llm(
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
     }
+    if getattr(config, "disable_thinking", False) and _thinking_toggle_supported(config):
+        base_kwargs["extra_body"] = _thinking_disabled_extra_body()
 
     try:
         response = client.chat.completions.create(
