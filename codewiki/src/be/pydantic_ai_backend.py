@@ -13,7 +13,7 @@ import os
 import traceback
 from typing import Any
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, capture_run_messages
 
 from codewiki.src.be.agent_tools.deps import CodeWikiDeps
 from codewiki.src.be.agent_tools.generate_sub_module_documentations import (
@@ -115,19 +115,28 @@ class PydanticAIBackend(LLMBackend):
             custom_instructions=self._custom_instructions,
         )
 
+        # Initialised before the try so the except block can reference it even
+        # if the failure happens before capture_run_messages() is entered.
+        run_messages = []
         try:
-            await agent.run(
-                format_user_prompt(
-                    module_name=module_name,
-                    core_component_ids=core_component_ids,
-                    components=components,
-                    module_tree=deps.module_tree,
-                ),
-                deps=deps,
-            )
+            with capture_run_messages() as run_messages:
+                await agent.run(
+                    format_user_prompt(
+                        module_name=module_name,
+                        core_component_ids=core_component_ids,
+                        components=components,
+                        module_tree=deps.module_tree,
+                    ),
+                    deps=deps,
+                )
             file_manager.save_json(deps.module_tree, module_tree_path)
             return deps.module_tree
         except Exception as e:
             logger.error("Error processing module %s: %s", module_name, e)
             logger.error("Traceback: %s", traceback.format_exc())
+            # Dump the tail of the conversation so the failing tool calls (the
+            # model's actual arguments and the validation errors sent back to
+            # it) are visible in the log for debugging.
+            for message in run_messages[-8:]:
+                logger.error("Run message: %r", message)
             raise
