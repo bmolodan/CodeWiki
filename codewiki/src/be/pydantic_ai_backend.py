@@ -29,7 +29,7 @@ from codewiki.src.be.prompt_template import (
     format_system_prompt,
     format_user_prompt,
 )
-from codewiki.src.be.utils import is_complex_module
+from codewiki.src.be.utils import is_complex_module, log_failed_run_parts
 from codewiki.src.config import MODULE_TREE_FILENAME, OVERVIEW_FILENAME, Config
 from codewiki.src.utils import file_manager
 
@@ -127,9 +127,8 @@ class PydanticAIBackend(LLMBackend):
         except Exception as e:
             logger.error("Error processing module %s: %s", module_name, e)
             logger.error("Traceback: %s", traceback.format_exc())
-            # Dump the tail of the conversation so the failing tool calls (the
-            # model's actual arguments and the validation errors sent back to
-            # it) are visible in the log for debugging.
-            for message in run_messages[-8:]:
-                logger.error("Run message: %r", message)
+            # Surface the failing tool calls (the model's actual arguments and
+            # the validation errors sent back to it) without dumping the whole
+            # conversation, whose initial prompt embeds repository source.
+            log_failed_run_parts(logger, run_messages, module_name)
             raise
