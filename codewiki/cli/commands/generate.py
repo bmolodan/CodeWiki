@@ -309,7 +309,7 @@ def _invalidate_affected_modules(
 )
 @click.option(
     "--max-retries",
-    type=int,
+    type=click.IntRange(min=1),
     default=None,
     help="Tool-call retries allowed per agent before giving up (overrides config)",
 )
