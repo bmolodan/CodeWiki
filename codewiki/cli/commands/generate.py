@@ -308,6 +308,13 @@ def _invalidate_affected_modules(
          "normal calls if the provider rejects them (default: enabled)",
 )
 @click.option(
+    "--disable-thinking/--enable-thinking",
+    "disable_thinking",
+    default=None,
+    help="Turn off reasoning/thinking mode for hybrid-thinking models such as "
+         "Qwen3 (overrides config)",
+)
+@click.option(
     "--update",
     is_flag=True,
     help="Incremental update: only regenerate modules affected by changes since last generation",
@@ -337,6 +344,7 @@ def generate_command(
     max_token_per_leaf_module: Optional[int],
     max_depth: Optional[int],
     prompt_caching: Optional[bool],
+    disable_thinking: Optional[bool],
     update: bool = False,
     compare_to: Optional[str] = None
 ):
@@ -540,12 +548,14 @@ def generate_command(
             effective_max_depth = max_depth if max_depth is not None else config.max_depth
             effective_use_gitignore = use_gitignore if use_gitignore is not None else config.use_gitignore
             effective_prompt_caching = prompt_caching if prompt_caching is not None else config.prompt_caching
+            effective_disable_thinking = disable_thinking if disable_thinking is not None else config.disable_thinking
             logger.debug(f"Max tokens: {effective_max_tokens}")
             logger.debug(f"Max token/module: {effective_max_token_per_module}")
             logger.debug(f"Max token/leaf module: {effective_max_token_per_leaf}")
             logger.debug(f"Max depth: {effective_max_depth}")
             logger.debug(f"Use gitignore: {effective_use_gitignore}")
             logger.debug(f"Prompt caching: {effective_prompt_caching}")
+            logger.debug(f"Disable thinking: {effective_disable_thinking}")
         
         # Get agent instructions (merge runtime with persistent)
         agent_instructions_dict = None
@@ -587,6 +597,8 @@ def generate_command(
                 'use_gitignore': use_gitignore if use_gitignore is not None else config.use_gitignore,
                 # Prompt caching setting (runtime override takes precedence)
                 'prompt_caching': prompt_caching if prompt_caching is not None else config.prompt_caching,
+                # Thinking-mode setting (runtime override takes precedence)
+                'disable_thinking': disable_thinking if disable_thinking is not None else config.disable_thinking,
             },
             verbose=verbose,
             generate_html=github_pages,

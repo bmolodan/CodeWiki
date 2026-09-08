@@ -123,6 +123,8 @@ class Configuration:
         max_depth: Maximum depth for hierarchical decomposition (default: 2)
         use_gitignore: Apply Git ignore rules during repository analysis
         prompt_caching: Add prompt-cache breakpoints to agentic LLM calls (default: True)
+        disable_thinking: Turn off reasoning/thinking mode for hybrid-thinking
+            models such as Qwen3 (default: True)
         agent_instructions: Custom agent instructions for documentation generation
     """
     base_url: str
@@ -140,6 +142,7 @@ class Configuration:
     max_depth: int = 2
     use_gitignore: bool = True
     prompt_caching: bool = True
+    disable_thinking: bool = True
     agent_instructions: AgentInstructions = field(default_factory=AgentInstructions)
     
     def validate(self):
@@ -178,6 +181,7 @@ class Configuration:
             'max_depth': self.max_depth,
             'use_gitignore': self.use_gitignore,
             'prompt_caching': self.prompt_caching,
+            'disable_thinking': self.disable_thinking,
             'fallback_model': self.fallback_model,
         }
         if self.agent_instructions and not self.agent_instructions.is_empty():
@@ -215,6 +219,7 @@ class Configuration:
             max_depth=data.get('max_depth', 2),
             use_gitignore=data.get('use_gitignore', True),
             prompt_caching=data.get('prompt_caching', True),
+            disable_thinking=data.get('disable_thinking', True),
             agent_instructions=agent_instructions,
         )
     
@@ -284,4 +289,5 @@ class Configuration:
             agent_instructions=final_instructions.to_dict() if final_instructions else None,
             use_gitignore=self.use_gitignore,
             prompt_caching=self.prompt_caching,
+            disable_thinking=self.disable_thinking,
         )

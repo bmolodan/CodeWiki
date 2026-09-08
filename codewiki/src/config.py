@@ -42,6 +42,10 @@ FALLBACK_MODEL_1 = os.getenv('FALLBACK_MODEL_1', 'glm-4p5')
 CLUSTER_MODEL = os.getenv('CLUSTER_MODEL', MAIN_MODEL)
 LLM_BASE_URL = os.getenv('LLM_BASE_URL', 'http://0.0.0.0:4000/')
 LLM_API_KEY = os.getenv('LLM_API_KEY', 'sk-1234')
+# Disable reasoning/thinking mode by default (hybrid-thinking models like Qwen3
+# emit <think> blocks that corrupt tool-call output). Set DISABLE_THINKING=false
+# to leave thinking under provider control.
+DISABLE_THINKING = os.getenv('DISABLE_THINKING', 'true').lower() not in ('0', 'false', 'no')
 
 # Atlas Cloud default endpoint (OpenAI-compatible). Used to auto-fill the base URL
 # when the user selects the `atlas-cloud` provider without passing --base-url.
@@ -73,6 +77,10 @@ class Config:
     # Prompt caching for agentic/multi-turn calls (auto-disables per model if
     # the provider rejects cache_control markers)
     prompt_caching: bool = True
+    # Ask the provider to disable reasoning/thinking mode (hybrid models like
+    # Qwen3). Sent as chat_template_kwargs.enable_thinking=false via extra_body;
+    # skipped for first-party APIs that reject unknown fields. Default: True.
+    disable_thinking: bool = True
     # Agent instructions for customization
     agent_instructions: Optional[Dict[str, Any]] = None
     # Apply Git ignore rules before dependency analysis
@@ -158,6 +166,7 @@ class Config:
             cluster_model=CLUSTER_MODEL,
             fallback_model=FALLBACK_MODEL_1,
             use_gitignore=getattr(args, "use_gitignore", True),
+            disable_thinking=DISABLE_THINKING,
         )
     
     @classmethod
@@ -181,6 +190,7 @@ class Config:
         agent_instructions: Optional[Dict[str, Any]] = None,
         use_gitignore: bool = True,
         prompt_caching: bool = True,
+        disable_thinking: bool = True,
     ) -> 'Config':
         """
         Create configuration for CLI context.
@@ -204,6 +214,7 @@ class Config:
             agent_instructions: Custom agent instructions dict
             use_gitignore: Whether to apply Git ignore rules
             prompt_caching: Whether to add prompt-cache breakpoints to agentic calls
+            disable_thinking: Ask the provider to turn off reasoning/thinking mode
 
         Returns:
             Config instance
@@ -232,4 +243,5 @@ class Config:
             agent_instructions=agent_instructions,
             use_gitignore=use_gitignore,
             prompt_caching=prompt_caching,
+            disable_thinking=disable_thinking,
         )

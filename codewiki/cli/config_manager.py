@@ -138,6 +138,7 @@ class ConfigManager:
         azure_deployment: Optional[str] = None,
         use_gitignore: Optional[bool] = None,
         prompt_caching: Optional[bool] = None,
+        disable_thinking: Optional[bool] = None,
     ):
         """
         Save configuration to file and keyring.
@@ -159,6 +160,7 @@ class ConfigManager:
             azure_deployment: Azure OpenAI deployment name
             use_gitignore: Apply Git ignore rules during repository analysis
             prompt_caching: Add prompt-cache breakpoints to agentic LLM calls
+            disable_thinking: Turn off reasoning/thinking mode for the model
         """
         # Ensure config directory exists
         try:
@@ -212,6 +214,8 @@ class ConfigManager:
             self._config.use_gitignore = use_gitignore
         if prompt_caching is not None:
             self._config.prompt_caching = prompt_caching
+        if disable_thinking is not None:
+            self._config.disable_thinking = disable_thinking
 
         # Validate configuration whenever the minimum required fields are set.
         # Caw providers only need main_model; API providers need base_url +
