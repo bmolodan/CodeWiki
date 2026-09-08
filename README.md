@@ -46,6 +46,8 @@ pip install git+https://github.com/FSoft-AI4Code/CodeWiki.git
 codewiki --version
 ```
 
+> Prefer a source checkout (editable install, virtualenv, Python version-manager setup)? See **[INSTALL.md](INSTALL.md)** for a step-by-step guide, including how to configure the endpoint and the `--max-retries` / `--disable-thinking` options.
+
 ### 2. Configure Your Environment
 
 CodeWiki supports multiple LLM providers: **OpenAI-compatible**, **Atlas Cloud**, **Anthropic**, **AWS Bedrock**, **Azure OpenAI**, plus subscription mode via **Claude Code** and **Codex** CLIs (no API key required).
