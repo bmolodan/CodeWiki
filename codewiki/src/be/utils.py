@@ -273,6 +273,24 @@ async def validate_single_diagram(diagram_content: str, diagram_num: int, line_s
     return f"Diagram {diagram_num}: {core_error}"
 
 
+def log_failed_run_parts(logger, messages, context_label):
+    """Log only the tool-call and retry parts from captured pydantic-ai messages.
+
+    On an agent failure the captured message history also contains the initial
+    ``UserPromptPart`` — which embeds the full source of every core component
+    (see ``format_user_prompt``) — so dumping whole messages at ERROR would copy
+    repository source into the logs. This logs only ``ToolCallPart`` (the args
+    the model actually sent) and ``RetryPromptPart`` (the validation error sent
+    back to it), which carry the diagnostic signal without the source.
+    """
+    from pydantic_ai.messages import ToolCallPart, RetryPromptPart
+
+    for message in messages:
+        for part in getattr(message, "parts", []):
+            if isinstance(part, (ToolCallPart, RetryPromptPart)):
+                logger.error("[%s] failed-call detail: %r", context_label, part)
+
+
 if __name__ == "__main__":
     # Test with the provided file
     import asyncio
