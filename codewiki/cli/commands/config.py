@@ -128,6 +128,14 @@ def config_group():
     help="Tool-call retries allowed per agent before giving up. Raise this for "
          "weaker/local models that emit malformed tool arguments (default: 3)",
 )
+@click.option(
+    "--disable-thinking/--enable-thinking",
+    "disable_thinking",
+    default=None,
+    help="Turn off reasoning/thinking mode for hybrid-thinking models such as "
+         "Qwen3 (sends chat_template_kwargs.enable_thinking=false; default: "
+         "disabled). Use --enable-thinking to leave it under provider control.",
+)
 def config_set(
     api_key: Optional[str],
     base_url: Optional[str],
@@ -145,6 +153,7 @@ def config_set(
     use_gitignore: Optional[bool] = None,
     prompt_caching: Optional[bool] = None,
     max_retries: Optional[int] = None,
+    disable_thinking: Optional[bool] = None,
 ):
     """
     Set configuration values for CodeWiki.
@@ -197,7 +206,7 @@ def config_set(
     """
     try:
         # Check if at least one option is provided
-        if not any([api_key, base_url, main_model, cluster_model, fallback_model, max_tokens, max_token_per_module, max_token_per_leaf_module, max_depth, provider, aws_region, api_version, azure_deployment, use_gitignore is not None, prompt_caching is not None, max_retries is not None]):
+        if not any([api_key, base_url, main_model, cluster_model, fallback_model, max_tokens, max_token_per_module, max_token_per_leaf_module, max_depth, provider, aws_region, api_version, azure_deployment, use_gitignore is not None, prompt_caching is not None, max_retries is not None, disable_thinking is not None]):
             click.echo("No options provided. Use --help for usage information.")
             sys.exit(EXIT_CONFIG_ERROR)
 
@@ -272,6 +281,9 @@ def config_set(
                 raise ConfigurationError("max_retries must be a positive integer")
             validated_data['max_retries'] = max_retries
 
+        if disable_thinking is not None:
+            validated_data['disable_thinking'] = disable_thinking
+
         # Create config manager and save
         manager = ConfigManager()
         manager.load()  # Load existing config if present
@@ -293,6 +305,7 @@ def config_set(
             use_gitignore=validated_data.get('use_gitignore'),
             prompt_caching=validated_data.get('prompt_caching'),
             max_retries=validated_data.get('max_retries'),
+            disable_thinking=validated_data.get('disable_thinking'),
         )
 
         # Display success messages
@@ -362,6 +375,9 @@ def config_set(
         if max_retries is not None:
             click.secho(f"✓ Max retries: {max_retries}", fg="green")
 
+        if disable_thinking is not None:
+            click.secho(f"✓ Disable thinking: {disable_thinking}", fg="green")
+
         click.echo("\n" + click.style("Configuration updated successfully.", fg="green", bold=True))
         
     except ConfigurationError as e:
@@ -425,6 +441,7 @@ def config_show(output_json: bool):
                 "use_gitignore": config.use_gitignore if config else True,
                 "prompt_caching": config.prompt_caching if config else True,
                 "max_retries": config.max_retries if config else 3,
+                "disable_thinking": config.disable_thinking if config else True,
                 "agent_instructions": config.agent_instructions.to_dict() if config and config.agent_instructions else {},
                 "config_file": str(manager.config_file_path)
             }
@@ -482,6 +499,7 @@ def config_show(output_json: bool):
                 click.echo(f"  Max Token/Leaf Module:   {config.max_token_per_leaf_module}")
                 click.echo(f"  Prompt Caching:          {config.prompt_caching}")
                 click.echo(f"  Max Retries:             {config.max_retries}")
+                click.echo(f"  Disable Thinking:        {config.disable_thinking}")
             
             click.echo()
             click.secho("Decomposition Settings", fg="cyan", bold=True)

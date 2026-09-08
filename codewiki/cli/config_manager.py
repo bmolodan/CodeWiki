@@ -139,6 +139,7 @@ class ConfigManager:
         use_gitignore: Optional[bool] = None,
         prompt_caching: Optional[bool] = None,
         max_retries: Optional[int] = None,
+        disable_thinking: Optional[bool] = None,
     ):
         """
         Save configuration to file and keyring.
@@ -161,6 +162,7 @@ class ConfigManager:
             use_gitignore: Apply Git ignore rules during repository analysis
             prompt_caching: Add prompt-cache breakpoints to agentic LLM calls
             max_retries: Tool-call retries allowed per agent before giving up
+            disable_thinking: Turn off reasoning/thinking mode for the model
         """
         # Ensure config directory exists
         try:
@@ -216,6 +218,8 @@ class ConfigManager:
             self._config.prompt_caching = prompt_caching
         if max_retries is not None:
             self._config.max_retries = max_retries
+        if disable_thinking is not None:
+            self._config.disable_thinking = disable_thinking
 
         # Validate configuration whenever the minimum required fields are set.
         # Caw providers only need main_model; API providers need base_url +
