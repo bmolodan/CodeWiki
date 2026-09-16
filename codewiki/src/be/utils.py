@@ -48,13 +48,30 @@ def is_complex_module(components: dict[str, any], core_component_ids: list[str])
 # ---------------------- Token Counting ---------------------
 # ------------------------------------------------------------
 
-enc = tiktoken.encoding_for_model("gpt-4")
+# Lazily initialise the tokenizer. Building it calls tiktoken.get_encoding,
+# which reads the (bundled) cache — deferring it out of module import keeps the
+# import chain from touching tiktoken before codewiki has configured
+# TIKTOKEN_CACHE_DIR, and avoids any network fetch at import time.
+_enc = None
+
+
+def _get_encoder():
+    global _enc
+    if _enc is None:
+        from codewiki._tiktoken_setup import ensure_encoding_available
+
+        # gpt-4 maps to the cl100k_base encoding; verify it's bundled and give an
+        # actionable error instead of an opaque SSL traceback when it's missing.
+        ensure_encoding_available("cl100k_base")
+        _enc = tiktoken.encoding_for_model("gpt-4")
+    return _enc
+
 
 def count_tokens(text: str) -> int:
     """
     Count the number of tokens in a text.
     """
-    length = len(enc.encode(text))
+    length = len(_get_encoder().encode(text))
     # logger.debug(f"Number of tokens: {length}")
     return length
 
