@@ -210,6 +210,22 @@ codewiki generate --max-retries 5 --enable-thinking --verbose
 
 ---
 
+## Offline / air-gapped use
+
+CodeWiki tokenizes text with `tiktoken`, which normally downloads its encoding
+files from the internet on first use. To make it work with no network, the
+required encoding (`cl100k_base`) is **vendored inside the package** at
+`codewiki/resources/tiktoken_cache/` and CodeWiki points `TIKTOKEN_CACHE_DIR` at
+it automatically on startup — so a plain `pip install .` works offline out of the
+box.
+
+- **Override the cache location:** set `TIKTOKEN_CACHE_DIR=/your/path` — an
+  explicit value is always respected.
+- **Refresh / add encodings** (on an internet-connected machine):
+  `python scripts/prepare_tiktoken_cache.py` (add `--verify` to only check).
+- Details, source URL, and checksums:
+  [`codewiki/resources/tiktoken_cache/README.md`](codewiki/resources/tiktoken_cache/README.md).
+
 ## Troubleshooting
 
 - **`pip install` fails with a Python version error** — your active interpreter is
