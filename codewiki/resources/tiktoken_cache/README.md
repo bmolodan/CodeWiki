@@ -49,6 +49,8 @@ it to `REQUIRED_ENCODINGS` and re-run the script.
 
 ## Overriding the bundled cache
 
-Set `TIKTOKEN_CACHE_DIR` yourself to use a different cache location; CodeWiki
-uses `os.environ.setdefault`, so an explicit value is always preserved and the
-bundled cache is ignored.
+Set `TIKTOKEN_CACHE_DIR` yourself (in the shell or in the project's `.env`) to
+use a different cache location. CodeWiki only points tiktoken at the bundled
+directory **while loading its own encoder**, and only when you haven't set the
+variable — so an explicit value always wins, and the process is never left
+pinned to the (possibly read-only) `site-packages` cache for other tiktoken use.

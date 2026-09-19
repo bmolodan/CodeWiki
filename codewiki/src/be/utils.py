@@ -6,7 +6,6 @@ import threading
 from pathlib import Path
 from typing import List, Tuple
 import logging
-import tiktoken
 import traceback
 
 
@@ -49,21 +48,23 @@ def is_complex_module(components: dict[str, any], core_component_ids: list[str])
 # ------------------------------------------------------------
 
 # Lazily initialise the tokenizer. Building it calls tiktoken.get_encoding,
-# which reads the (bundled) cache — deferring it out of module import keeps the
-# import chain from touching tiktoken before codewiki has configured
-# TIKTOKEN_CACHE_DIR, and avoids any network fetch at import time.
+# which reads the (bundled) cache — deferring it out of module import avoids any
+# network/cache access at import time and lets a user TIKTOKEN_CACHE_DIR (incl.
+# one loaded from .env at config time) take effect before the encoder loads.
 _enc = None
+_enc_lock = threading.Lock()
 
 
 def _get_encoder():
     global _enc
     if _enc is None:
-        from codewiki._tiktoken_setup import ensure_encoding_available
+        with _enc_lock:  # serialize the scoped env mutation in load_encoding_for_model
+            if _enc is None:
+                from codewiki._tiktoken_setup import load_encoding_for_model
 
-        # gpt-4 maps to the cl100k_base encoding; verify it's bundled and give an
-        # actionable error instead of an opaque SSL traceback when it's missing.
-        ensure_encoding_available("cl100k_base")
-        _enc = tiktoken.encoding_for_model("gpt-4")
+                # gpt-4 maps to the cl100k_base encoding; loads from the bundled
+                # cache offline and raises an actionable error if it's missing.
+                _enc = load_encoding_for_model("gpt-4", "cl100k_base")
     return _enc
 
 
