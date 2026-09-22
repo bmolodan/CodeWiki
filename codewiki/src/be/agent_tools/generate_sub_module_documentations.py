@@ -117,10 +117,30 @@ async def generate_sub_module_documentation(
         except Exception as e:
             # capture_run_messages() in the parent backend binds to the outer
             # agent's run, so a nested sub-agent failure isn't in that history.
-            # Log the exception and its cause (the retry text / validation error
-            # with the offending tool args) so the real failure is visible.
-            logger.error("Error generating sub-module %s: %s", sub_module_name, e)
-            logger.error("Cause: %r", getattr(e, "__cause__", None))
+            # Surface the failure without leaking source: the cause can be a
+            # pydantic ValidationError whose str/repr embeds the offending tool
+            # args (file_text/content/old_str/new_str = generated pages), so log
+            # only structured validation metadata (type/loc/msg) — never values.
+            cause = getattr(e, "__cause__", None)
+            detail = type(cause).__name__ if cause is not None else "none"
+            errors_fn = getattr(cause, "errors", None)
+            if callable(errors_fn):
+                try:
+                    detail += ": " + repr(
+                        [
+                            {k: er.get(k) for k in ("type", "loc", "msg") if k in er}
+                            for er in errors_fn()
+                            if isinstance(er, dict)
+                        ]
+                    )
+                except Exception:  # noqa: BLE001 — diagnostics must never raise
+                    pass
+            logger.error(
+                "Error generating sub-module %s: %s (cause: %s)",
+                sub_module_name,
+                type(e).__name__,
+                detail,
+            )
             raise
 
         # remove the sub-module name from the path to current module and the module tree
