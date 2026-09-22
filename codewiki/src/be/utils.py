@@ -6,7 +6,6 @@ import threading
 from pathlib import Path
 from typing import List, Tuple
 import logging
-import tiktoken
 
 
 logger = logging.getLogger(__name__)
@@ -49,14 +48,33 @@ def is_complex_module(components: dict[str, any], core_component_ids: list[str])
 # ---------------------- Token Counting ---------------------
 # ------------------------------------------------------------
 
-enc = tiktoken.encoding_for_model("gpt-4")
+# Lazily initialise the tokenizer. It is built directly from the bundled ranks
+# file (no network, and no os.environ mutation) — deferring it out of module
+# import avoids any tiktoken work at import time and lets a user TIKTOKEN_CACHE_DIR
+# (incl. one loaded from .env at config time) be observed when the encoder loads.
+_enc = None
+_enc_lock = threading.Lock()
+
+
+def _get_encoder():
+    global _enc
+    if _enc is None:
+        with _enc_lock:  # guard one-time initialisation of _enc
+            if _enc is None:
+                from codewiki._tiktoken_setup import load_encoding_for_model
+
+                # gpt-4 maps to the cl100k_base encoding; built from the bundled
+                # ranks offline, raising an actionable error if it's missing.
+                _enc = load_encoding_for_model("gpt-4", "cl100k_base")
+    return _enc
+
 
 
 def count_tokens(text: str) -> int:
     """
     Count the number of tokens in a text.
     """
-    length = len(enc.encode(text))
+    length = len(_get_encoder().encode(text))
     # logger.debug(f"Number of tokens: {length}")
     return length
 
@@ -284,6 +302,24 @@ async def validate_single_diagram(diagram_content: str, diagram_num: int, line_s
         newline = "\n"
         return f"Diagram {diagram_num}: Parse error on line {actual_line_in_file}:{newline}{newline.join(core_error.split(newline)[1:])}"
     return f"Diagram {diagram_num}: {core_error}"
+
+
+def log_failed_run_parts(logger, messages, context_label):
+    """Log only the tool-call and retry parts from captured pydantic-ai messages.
+
+    On an agent failure the captured message history also contains the initial
+    ``UserPromptPart`` — which embeds the full source of every core component
+    (see ``format_user_prompt``) — so dumping whole messages at ERROR would copy
+    repository source into the logs. This logs only ``ToolCallPart`` (the args
+    the model actually sent) and ``RetryPromptPart`` (the validation error sent
+    back to it), which carry the diagnostic signal without the source.
+    """
+    from pydantic_ai.messages import ToolCallPart, RetryPromptPart
+
+    for message in messages:
+        for part in getattr(message, "parts", []):
+            if isinstance(part, (ToolCallPart, RetryPromptPart)):
+                logger.error("[%s] failed-call detail: %r", context_label, part)
 
 
 if __name__ == "__main__":

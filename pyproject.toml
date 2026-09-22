@@ -114,7 +114,7 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
-codewiki = ["templates/**/*", "py.typed"]
+codewiki = ["templates/**/*", "py.typed", "resources/tiktoken_cache/*"]
 
 [tool.black]
 line-length = 100

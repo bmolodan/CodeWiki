@@ -327,6 +327,19 @@ def _invalidate_affected_modules(output_dir: Path, changed_files: list[str], log
     help="Comma-separated patterns skipped by artifact analysis (e.g. 'docker/data/*,config/generated/*')",
 )
 @click.option(
+    "--max-retries",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Tool-call retries allowed per agent before giving up (overrides config)",
+)
+@click.option(
+    "--disable-thinking/--enable-thinking",
+    "disable_thinking",
+    default=None,
+    help="Turn off reasoning/thinking mode for hybrid-thinking models such as "
+         "Qwen3 (overrides config)",
+)
+@click.option(
     "--update",
     is_flag=True,
     help="Incremental update: only regenerate modules affected by changes since last generation",
@@ -399,6 +412,8 @@ def generate_command(
     max_token_per_leaf_module: int | None,
     max_depth: int | None,
     prompt_caching: bool | None,
+    max_retries: int | None,
+    disable_thinking: bool | None,
     artifacts: bool = True,
     artifact_token_budget: int = 200_000,
     with_prose: bool = False,
@@ -644,6 +659,12 @@ def generate_command(
             effective_prompt_caching = (
                 prompt_caching if prompt_caching is not None else config.prompt_caching
             )
+            effective_max_retries = (
+                max_retries if max_retries is not None else config.max_retries
+            )
+            effective_disable_thinking = (
+                disable_thinking if disable_thinking is not None else config.disable_thinking
+            )
             logger.debug(f"Max tokens: {effective_max_tokens}")
             logger.debug(f"Max token/module: {effective_max_token_per_module}")
             logger.debug(f"Max token/leaf module: {effective_max_token_per_leaf}")
@@ -653,6 +674,8 @@ def generate_command(
             logger.debug(
                 f"Artifacts: {artifacts} (token budget {artifact_token_budget}, prose {with_prose})"
             )
+            logger.debug(f"Max retries: {effective_max_retries}")
+            logger.debug(f"Disable thinking: {effective_disable_thinking}")
 
         # Get agent instructions (merge runtime with persistent)
         agent_instructions_dict = None
@@ -725,6 +748,12 @@ def generate_command(
                 "prompt_caching": prompt_caching
                 if prompt_caching is not None
                 else config.prompt_caching,
+                # Tool-call retry setting (runtime override takes precedence)
+                "max_retries": max_retries if max_retries is not None else config.max_retries,
+                # Thinking-mode setting (runtime override takes precedence)
+                "disable_thinking": disable_thinking
+                if disable_thinking is not None
+                else config.disable_thinking,
                 # Artifact-aware generation (runtime-only flags)
                 "artifacts_enabled": artifacts,
                 "artifact_token_budget": artifact_token_budget,

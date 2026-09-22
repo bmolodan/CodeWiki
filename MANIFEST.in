@@ -1,0 +1,3 @@
+# Ensure the vendored tiktoken encoding cache ships in the sdist.
+# (package-data in pyproject.toml covers the wheel; this covers sdist.)
+recursive-include codewiki/resources/tiktoken_cache *

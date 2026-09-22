@@ -84,6 +84,7 @@ async def generate_sub_module_documentation(
                     str_replace_editor_tool,
                     generate_sub_module_documentation_tool,
                 ],
+                retries=ctx.deps.config.max_retries,
             )
         else:
             sub_agent = Agent(
@@ -94,6 +95,7 @@ async def generate_sub_module_documentation(
                     module_name=sub_module_name, custom_instructions=ctx.deps.custom_instructions
                 ),
                 tools=[read_code_components_tool, str_replace_editor_tool],
+                retries=ctx.deps.config.max_retries,
             )
 
         deps.current_module_name = sub_module_name
@@ -102,15 +104,24 @@ async def generate_sub_module_documentation(
         # log the current module tree
         # print(f"Current module tree: {json.dumps(deps.module_tree, indent=4)}")
 
-        await sub_agent.run(
-            format_user_prompt(
-                module_name=deps.current_module_name,
-                core_component_ids=core_component_ids,
-                components=ctx.deps.components,
-                module_tree=ctx.deps.module_tree,
-            ),
-            deps=ctx.deps,
-        )
+        try:
+            await sub_agent.run(
+                format_user_prompt(
+                    module_name=deps.current_module_name,
+                    core_component_ids=core_component_ids,
+                    components=ctx.deps.components,
+                    module_tree=ctx.deps.module_tree,
+                ),
+                deps=ctx.deps,
+            )
+        except Exception as e:
+            # capture_run_messages() in the parent backend binds to the outer
+            # agent's run, so a nested sub-agent failure isn't in that history.
+            # Log the exception and its cause (the retry text / validation error
+            # with the offending tool args) so the real failure is visible.
+            logger.error("Error generating sub-module %s: %s", sub_module_name, e)
+            logger.error("Cause: %r", getattr(e, "__cause__", None))
+            raise
 
         # remove the sub-module name from the path to current module and the module tree
         deps.path_to_current_module.pop()

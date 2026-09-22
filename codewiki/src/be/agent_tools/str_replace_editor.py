@@ -850,6 +850,15 @@ async def str_replace_editor(
     old_str: str | None = None,
     new_str: str | None = None,
     insert_line: InsertLine = None,
+    # Aliases accepted for cross-model compatibility. Weaker/local models (e.g.
+    # Qwen3) often emit the OpenAI `str_replace_based_edit_tool` field names
+    # (old_string/new_string) or `content` for the created file body. Declaring
+    # them here means pydantic-ai accepts those calls instead of rejecting them
+    # as unknown arguments (which no number of retries can fix). They are mapped
+    # onto the canonical parameters below.
+    old_string: str | None = None,
+    new_string: str | None = None,
+    content: str | None = None,
 ) -> str:
     """
     Custom editing tool for viewing, creating and editing files
@@ -861,15 +870,27 @@ async def str_replace_editor(
         * Only `view` command is allowed when `working_dir` is `repo`.
 
     Args:
-        working_dir: The working directory to use. Choose `repo` to view repository files (source code, and build/CI/container/manifest/config artifacts such as Dockerfile, Makefile, .github/workflows/*.yml, pyproject.toml), or `docs` to work with the generated documentation files.
         command: The command to run. Allowed options are: `view`, `create`, `str_replace`, `insert`, `undo_edit`.
+        working_dir: The working directory to use. Choose `repo` to view repository files (source code, and build/CI/container/manifest/config artifacts such as Dockerfile, Makefile, .github/workflows/*.yml, pyproject.toml), or `docs` to work with the generated documentation files.
         path: Path to file or directory, e.g. `./chat_core.md` or `./agents/`
         file: Alias for `path` parameter (for compatibility with some models)
         file_text: Required parameter of `create` command, with the content of the file to be created.
         view_range: Optional parameter of `view` command when `path` points to a file. If none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file.
         old_str: Required parameter of `str_replace` command containing the string in `path` to replace.
         new_str: Optional parameter of `str_replace` command containing the new string (if not given, no string will be added). Required parameter of `insert` command containing the string to insert.
+        old_string: Alias for `old_str` (some models emit this name).
+        new_string: Alias for `new_str` (some models emit this name).
+        content: Alias for `file_text` (some models emit this name for `create`).
     """
+
+    # Map cross-model aliases onto the canonical parameters. Prefer the
+    # canonical value when both are supplied.
+    if old_str is None and old_string is not None:
+        old_str = old_string
+    if new_str is None and new_string is not None:
+        new_str = new_string
+    if file_text is None and content is not None:
+        file_text = content
 
     # Handle both `path` and `file` parameters for model compatibility
     if path is None and file is None:

@@ -14,7 +14,7 @@ import time
 import traceback
 from typing import Any
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, capture_run_messages
 
 from codewiki.src.be.agent_tools.deps import CodeWikiDeps
 from codewiki.src.be.agent_tools.generate_sub_module_documentations import (
@@ -30,7 +30,7 @@ from codewiki.src.be.prompt_template import (
     format_system_prompt,
     format_user_prompt,
 )
-from codewiki.src.be.utils import is_complex_module
+from codewiki.src.be.utils import is_complex_module, log_failed_run_parts
 from codewiki.src.config import MODULE_TREE_FILENAME, OVERVIEW_FILENAME, Config
 from codewiki.src.utils import file_manager
 
@@ -127,6 +127,7 @@ class PydanticAIBackend(LLMBackend):
                     generate_sub_module_documentation_tool,
                 ],
                 system_prompt=format_system_prompt(module_name, self._custom_instructions),
+                retries=config.max_retries,
             )
         else:
             agent = Agent(
@@ -135,6 +136,7 @@ class PydanticAIBackend(LLMBackend):
                 deps_type=CodeWikiDeps,
                 tools=[read_code_components_tool, str_replace_editor_tool],
                 system_prompt=format_leaf_system_prompt(module_name, self._custom_instructions),
+                retries=config.max_retries,
             )
 
         deps = CodeWikiDeps(
@@ -151,20 +153,28 @@ class PydanticAIBackend(LLMBackend):
             custom_instructions=self._custom_instructions,
         )
 
+        # Initialised before the try so the except block can reference it even
+        # if the failure happens before capture_run_messages() is entered.
+        run_messages = []
         try:
-            result = await agent.run(
-                format_user_prompt(
-                    module_name=module_name,
-                    core_component_ids=core_component_ids,
-                    components=components,
-                    module_tree=deps.module_tree,
-                ),
-                deps=deps,
-            )
+            with capture_run_messages() as run_messages:
+                result = await agent.run(
+                    format_user_prompt(
+                        module_name=module_name,
+                        core_component_ids=core_component_ids,
+                        components=components,
+                        module_tree=deps.module_tree,
+                    ),
+                    deps=deps,
+                )
             self.last_usage = _run_usage(result)
             file_manager.save_json(deps.module_tree, module_tree_path)
             return deps.module_tree
         except Exception as e:
             logger.error("Error processing module %s: %s", module_name, e)
             logger.error("Traceback: %s", traceback.format_exc())
+            # Surface the failing tool calls (the model's actual arguments and
+            # the validation errors sent back to it) without dumping the whole
+            # conversation, whose initial prompt embeds repository source.
+            log_failed_run_parts(logger, run_messages, module_name)
             raise

@@ -55,6 +55,8 @@ codewiki --version
 
 Needs Python 3.12+, Git, and Node.js with npm at install time.
 
+> Prefer a source checkout (editable install, virtualenv, Python version-manager setup)? See **[INSTALL.md](INSTALL.md)** for a step-by-step guide, including how to configure the endpoint and the `--max-retries` / `--disable-thinking` options.
+
 **2. Pick a provider**
 
 ```bash

@@ -151,6 +151,8 @@ class CLIDocumentationGenerator:
                 artifacts_enabled=self.config.get("artifacts_enabled", True),
                 artifact_token_budget=self.config.get("artifact_token_budget", 200_000),
                 with_prose=self.config.get("with_prose", False),
+                max_retries=self.config.get("max_retries", 3),
+                disable_thinking=self.config.get("disable_thinking", True),
             )
 
             # Run backend documentation generation
