@@ -5,11 +5,11 @@ This package provides a CLI tool for generating documentation from code reposito
 and an MCP server for IDE-driven documentation generation.
 """
 
-# Note: tiktoken is pointed at the bundled encoding cache lazily, scoped to the
-# encoder load (see codewiki/_tiktoken_setup.py and codewiki/src/be/utils.py),
-# rather than process-wide here — so a user TIKTOKEN_CACHE_DIR (incl. one from
-# .env, loaded later) still wins and the process isn't pinned to a read-only
-# site-packages cache.
+# Note: the tokenizer is built lazily and directly from the bundled encoding
+# ranks (see codewiki/_tiktoken_setup.py and codewiki/src/be/utils.py) without
+# touching os.environ, so tokenization works offline after `pip install .`. If
+# the user sets TIKTOKEN_CACHE_DIR (incl. from .env), CodeWiki defers to
+# tiktoken's own resolution so the explicit choice wins.
 
 __version__ = "1.0.1"
 __author__ = "CodeWiki Contributors"

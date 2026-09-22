@@ -47,10 +47,18 @@ The script downloads each required encoding into this directory and checks it
 against the recorded sha256. If CodeWiki starts requiring another encoding, add
 it to `REQUIRED_ENCODINGS` and re-run the script.
 
+## How the bundled encoding is loaded
+
+By default CodeWiki builds its encoder **directly** from the vendored ranks file
+here plus the pinned encoding spec (`ENCODING_SPECS` in
+`codewiki/_tiktoken_setup.py`). This reads no network and does **not** touch
+`os.environ` — so it works offline, is thread-safe, and never writes to the
+(possibly read-only) `site-packages` cache.
+
 ## Overriding the bundled cache
 
 Set `TIKTOKEN_CACHE_DIR` yourself (in the shell or in the project's `.env`) to
-use a different cache location. CodeWiki only points tiktoken at the bundled
-directory **while loading its own encoder**, and only when you haven't set the
-variable — so an explicit value always wins, and the process is never left
-pinned to the (possibly read-only) `site-packages` cache for other tiktoken use.
+opt into tiktoken's own cache/resolution instead. When the variable is present —
+**any value, including an empty string** (tiktoken's "no cache" signal) —
+CodeWiki defers entirely to `tiktoken.encoding_for_model(...)` and ignores the
+bundled data, so your explicit choice always wins.

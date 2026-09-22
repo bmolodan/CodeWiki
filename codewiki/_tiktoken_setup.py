@@ -1,34 +1,39 @@
-"""Bundled tiktoken cache bootstrap.
+"""Bundled tiktoken encoding, loaded without touching the environment.
 
 tiktoken downloads its BPE encoding files from
 ``openaipublic.blob.core.windows.net`` on first use and caches them under
 ``TIKTOKEN_CACHE_DIR``. On an offline / air-gapped machine that download fails
 with a long SSL traceback. To make CodeWiki work after ``pip install .`` with no
-network, the required encoding files are vendored inside the installed package
-at ``codewiki/resources/tiktoken_cache/`` and this module points tiktoken at
-them **only while loading CodeWiki's own encoder**.
+network, the required encoding files are vendored inside the installed package at
+``codewiki/resources/tiktoken_cache/`` and this module builds the encoder
+directly from them.
 
-Design notes:
+The default path constructs a ``tiktoken.Encoding`` from the vendored ranks file
+plus the vendored (pinned) encoding spec and **never touches ``os.environ``** —
+so it is thread-safe, leaves no process-global state, and cannot be defeated by a
+read-only ``site-packages`` cache. If the user has set ``TIKTOKEN_CACHE_DIR``
+(the key is present — even an empty string, which tiktoken treats as "no cache"),
+CodeWiki defers entirely to tiktoken's own resolution so the explicit choice
+wins.
 
-* The bundled directory is resolved relative to the installed package
-  (``__file__``), never the current working directory, so it behaves identically
-  from a source checkout, a wheel in ``site-packages`` and CI.
-* ``TIKTOKEN_CACHE_DIR`` is set with a *scoped* context manager around the
-  encoder load rather than process-wide at import. This (a) lets an explicit
-  user override — including one loaded later from ``.env`` — win, and (b) avoids
-  leaving the whole process pointed at a possibly read-only ``site-packages``
-  cache, which would break caching for any *other* encoding requested elsewhere
-  in the same process.
+Paths are resolved relative to the installed package (``__file__``), never the
+current working directory, so behaviour is identical from a source checkout, a
+wheel in ``site-packages`` and CI.
 
-tiktoken names each cache file ``sha1(<blob-url>).hexdigest()``. The mapping
-below records, for every encoding CodeWiki requires, that cache-file name plus
-the sha256 of the file contents so the vendored blob is reproducible/verifiable.
+tiktoken names each cache file ``sha1(<blob-url>).hexdigest()``. ``REQUIRED_ENCODINGS``
+records that cache-file name plus the sha256 of the file contents so the vendored
+blob is reproducible/verifiable. ``ENCODING_SPECS`` records the rest of the
+(pinned, stable) encoding definition — the regex and special tokens — taken
+verbatim from tiktoken's ``cl100k_base`` constructor. The offline tests assert
+this reproduces ``tiktoken.get_encoding("cl100k_base")`` exactly.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import os
-from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Directory bundled into the package (see pyproject package-data / MANIFEST.in).
@@ -47,35 +52,34 @@ REQUIRED_ENCODINGS: dict[str, dict[str, str]] = {
 }
 
 
-@contextmanager
-def bundled_cache_env():
-    """Point ``TIKTOKEN_CACHE_DIR`` at the bundled cache for the duration only.
+@dataclass(frozen=True)
+class EncodingSpec:
+    """The non-ranks half of a tiktoken encoding definition (pinned, vendored)."""
 
-    If the user already set ``TIKTOKEN_CACHE_DIR`` (in the shell or via ``.env``,
-    which CodeWiki loads before any tokenization happens), it is left untouched —
-    the explicit override wins. Otherwise the bundled directory is set and then
-    restored to its prior state (unset) on exit, so the process is not left
-    pinned to a read-only ``site-packages`` cache for unrelated tiktoken use.
-    """
-    existing = os.environ.get("TIKTOKEN_CACHE_DIR")
-    if existing:
-        yield
-        return
-    os.environ["TIKTOKEN_CACHE_DIR"] = str(BUNDLED_CACHE_DIR)
-    try:
-        yield
-    finally:
-        os.environ.pop("TIKTOKEN_CACHE_DIR", None)
+    pat_str: str
+    special_tokens: dict[str, int] = field(default_factory=dict)
+
+
+# Verbatim from tiktoken's `cl100k_base` constructor (tiktoken_ext.openai_public).
+# Pinned alongside the ranks file so the encoder can be built offline without any
+# tiktoken registry/network access; the parity test guards these against the
+# installed tiktoken.
+ENCODING_SPECS: dict[str, EncodingSpec] = {
+    "cl100k_base": EncodingSpec(
+        pat_str=r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}++|\p{N}{1,3}+| ?[^\s\p{L}\p{N}]++[\r\n]*+|\s++$|\s*[\r\n]|\s+(?!\S)|\s""",
+        special_tokens={
+            "<|endoftext|>": 100257,
+            "<|fim_prefix|>": 100258,
+            "<|fim_middle|>": 100259,
+            "<|fim_suffix|>": 100260,
+            "<|endofprompt|>": 100276,
+        },
+    ),
+}
 
 
 def ensure_encoding_available(name: str) -> None:
-    """Fail fast with an actionable message if a required encoding is missing.
-
-    Only enforced when the active cache directory is CodeWiki's bundled one. If
-    the user pointed ``TIKTOKEN_CACHE_DIR`` at a custom location we leave the
-    outcome to tiktoken (they may intend an online download or a different
-    layout). Call inside :func:`bundled_cache_env` so the active dir reflects the
-    scoped value.
+    """Fail fast with an actionable message if a required encoding is not bundled.
 
     Raising here avoids the opaque SSL/connection traceback tiktoken would emit
     when it silently falls back to a network fetch on an offline machine.
@@ -83,12 +87,6 @@ def ensure_encoding_available(name: str) -> None:
     spec = REQUIRED_ENCODINGS.get(name)
     if spec is None:
         return
-
-    active = os.environ.get("TIKTOKEN_CACHE_DIR", str(BUNDLED_CACHE_DIR))
-    if Path(active).resolve() != BUNDLED_CACHE_DIR.resolve():
-        # User-provided cache dir — respect it, don't second-guess.
-        return
-
     cache_file = BUNDLED_CACHE_DIR / spec["cache_file"]
     if not cache_file.exists():
         raise RuntimeError(
@@ -100,15 +98,54 @@ def ensure_encoding_available(name: str) -> None:
         )
 
 
-def load_encoding_for_model(model_name: str, encoding_name: str):
-    """Load a tiktoken encoding for *model_name*, using the bundled cache offline.
+def _load_bundled_ranks(name: str) -> dict[bytes, int]:
+    """Read and parse the vendored BPE ranks for *name*.
 
-    Wraps the load in :func:`bundled_cache_env` so the bundled directory is only
-    in effect during the load (respecting any user override), and verifies the
-    encoding is available first for a clean offline error.
+    Verifies the file's sha256 against ``REQUIRED_ENCODINGS`` and parses the
+    tiktoken bpe format (``<base64-token> <rank>`` per line) into the
+    ``mergeable_ranks`` mapping — the same parse tiktoken's ``load_tiktoken_bpe``
+    performs, but done here so no cache dir / environment / network is involved.
+    """
+    spec = REQUIRED_ENCODINGS[name]
+    cache_file = BUNDLED_CACHE_DIR / spec["cache_file"]
+    contents = cache_file.read_bytes()
+
+    digest = hashlib.sha256(contents).hexdigest()
+    if digest != spec["sha256"]:
+        raise RuntimeError(
+            f"Bundled tiktoken cache for '{name}' is corrupt: sha256 {digest} "
+            f"!= expected {spec['sha256']} ({cache_file})."
+        )
+
+    ranks: dict[bytes, int] = {}
+    for line in contents.splitlines():
+        if not line:
+            continue
+        token, rank = line.split()
+        ranks[base64.b64decode(token)] = int(rank)
+    return ranks
+
+
+def load_encoding_for_model(model_name: str, encoding_name: str):
+    """Return a tiktoken encoding for *model_name*, offline via the bundled data.
+
+    If ``TIKTOKEN_CACHE_DIR`` is set (present, even if empty), the user has opted
+    into their own tiktoken cache/config, so we defer entirely to
+    ``tiktoken.encoding_for_model`` and touch no bundled data. Otherwise we build
+    the encoding directly from the vendored ranks + spec, without reading or
+    writing ``os.environ`` (thread-safe; no site-packages writes).
     """
     import tiktoken
 
-    with bundled_cache_env():
-        ensure_encoding_available(encoding_name)
+    if "TIKTOKEN_CACHE_DIR" in os.environ:
+        # Explicit user cache/override wins — respect it, don't second-guess.
         return tiktoken.encoding_for_model(model_name)
+
+    ensure_encoding_available(encoding_name)
+    spec = ENCODING_SPECS[encoding_name]
+    return tiktoken.Encoding(
+        name=encoding_name,
+        pat_str=spec.pat_str,
+        mergeable_ranks=_load_bundled_ranks(encoding_name),
+        special_tokens=dict(spec.special_tokens),
+    )

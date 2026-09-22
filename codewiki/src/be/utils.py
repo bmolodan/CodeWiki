@@ -47,10 +47,10 @@ def is_complex_module(components: dict[str, any], core_component_ids: list[str])
 # ---------------------- Token Counting ---------------------
 # ------------------------------------------------------------
 
-# Lazily initialise the tokenizer. Building it calls tiktoken.get_encoding,
-# which reads the (bundled) cache — deferring it out of module import avoids any
-# network/cache access at import time and lets a user TIKTOKEN_CACHE_DIR (incl.
-# one loaded from .env at config time) take effect before the encoder loads.
+# Lazily initialise the tokenizer. It is built directly from the bundled ranks
+# file (no network, and no os.environ mutation) — deferring it out of module
+# import avoids any tiktoken work at import time and lets a user TIKTOKEN_CACHE_DIR
+# (incl. one loaded from .env at config time) be observed when the encoder loads.
 _enc = None
 _enc_lock = threading.Lock()
 
@@ -58,12 +58,12 @@ _enc_lock = threading.Lock()
 def _get_encoder():
     global _enc
     if _enc is None:
-        with _enc_lock:  # serialize the scoped env mutation in load_encoding_for_model
+        with _enc_lock:  # guard one-time initialisation of _enc
             if _enc is None:
                 from codewiki._tiktoken_setup import load_encoding_for_model
 
-                # gpt-4 maps to the cl100k_base encoding; loads from the bundled
-                # cache offline and raises an actionable error if it's missing.
+                # gpt-4 maps to the cl100k_base encoding; built from the bundled
+                # ranks offline, raising an actionable error if it's missing.
                 _enc = load_encoding_for_model("gpt-4", "cl100k_base")
     return _enc
 
