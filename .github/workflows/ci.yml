@@ -61,12 +61,17 @@ jobs:
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             diff_range="${PR_BASE_SHA}...${PR_HEAD_SHA}"
-          else
+            git diff --name-only --diff-filter=ACMR -z "$diff_range" -- '*.py' \
+              > "$RUNNER_TEMP/changed-python-files"
+          elif [[ "$GITHUB_EVENT_NAME" == "push" && -n "$PUSH_BASE_SHA" ]]; then
             diff_range="${PUSH_BASE_SHA}..${GITHUB_SHA}"
+            git diff --name-only --diff-filter=ACMR -z "$diff_range" -- '*.py' \
+              > "$RUNNER_TEMP/changed-python-files"
+          else
+            # Manual run (workflow_dispatch) or a push with no before-SHA has no
+            # meaningful diff base — lint the whole tree so the run isn't a no-op.
+            git ls-files -z -- '*.py' > "$RUNNER_TEMP/changed-python-files"
           fi
-
-          git diff --name-only --diff-filter=ACMR -z "$diff_range" -- '*.py' \
-            > "$RUNNER_TEMP/changed-python-files"
 
       - name: Ruff check changed files
         run: |

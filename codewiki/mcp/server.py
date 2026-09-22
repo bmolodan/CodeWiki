@@ -531,6 +531,7 @@ async def _legacy_generate_docs(arguments: dict[str, Any]) -> list[TextContent]:
         max_tokens=config.max_tokens,
         agent_instructions=agent_instructions or None,
         use_gitignore=arguments.get("use_gitignore", True),
+        max_retries=getattr(config, "max_retries", 3),
         disable_thinking=getattr(config, "disable_thinking", True),
     )
 

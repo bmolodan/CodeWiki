@@ -304,22 +304,63 @@ async def validate_single_diagram(diagram_content: str, diagram_num: int, line_s
     return f"Diagram {diagram_num}: {core_error}"
 
 
-def log_failed_run_parts(logger, messages, context_label):
-    """Log only the tool-call and retry parts from captured pydantic-ai messages.
+def _redact_tool_args(args):
+    """Summarise tool-call arguments without emitting their (possibly large,
+    source-bearing) values.
 
-    On an agent failure the captured message history also contains the initial
+    ``str_replace_editor`` args like ``file_text``/``content``/``old_str``/
+    ``new_str`` can contain an entire generated page or quoted repository code,
+    so we log each argument's name and value length only — never the value.
+    """
+    if isinstance(args, dict):
+        return {k: f"<{len(str(v))} chars>" for k, v in args.items()}
+    if isinstance(args, str):
+        return f"<{len(args)} chars of JSON>"
+    return args
+
+
+def log_failed_run_parts(logger, messages, context_label):
+    """Log the tool-call and retry parts from captured pydantic-ai messages,
+    redacting value contents.
+
+    On an agent failure the captured history also contains the initial
     ``UserPromptPart`` — which embeds the full source of every core component
-    (see ``format_user_prompt``) — so dumping whole messages at ERROR would copy
-    repository source into the logs. This logs only ``ToolCallPart`` (the args
-    the model actually sent) and ``RetryPromptPart`` (the validation error sent
-    back to it), which carry the diagnostic signal without the source.
+    (see ``format_user_prompt``) — and each ``ToolCallPart``'s ``args`` can hold
+    a whole generated page (``file_text``/``content``/``old_str``/``new_str``).
+    Dumping either verbatim would copy source/secrets into the logs, so this
+    logs only the diagnostic shape: the tool name plus each argument's name and
+    length for ``ToolCallPart``, and the validation-error summary (never the
+    offending input value) for ``RetryPromptPart``.
     """
     from pydantic_ai.messages import ToolCallPart, RetryPromptPart
 
     for message in messages:
         for part in getattr(message, "parts", []):
-            if isinstance(part, (ToolCallPart, RetryPromptPart)):
-                logger.error("[%s] failed-call detail: %r", context_label, part)
+            if isinstance(part, ToolCallPart):
+                logger.error(
+                    "[%s] failed tool call: tool=%s args=%r",
+                    context_label,
+                    part.tool_name,
+                    _redact_tool_args(part.args),
+                )
+            elif isinstance(part, RetryPromptPart):
+                content = part.content
+                if isinstance(content, list):
+                    # list[pydantic_core.ErrorDetails]: keep type/loc/msg, drop
+                    # the 'input' field which may echo source.
+                    summary = [
+                        {k: e.get(k) for k in ("type", "loc", "msg") if k in e}
+                        for e in content
+                        if isinstance(e, dict)
+                    ]
+                else:
+                    summary = content
+                logger.error(
+                    "[%s] tool retry: tool=%s error=%r",
+                    context_label,
+                    getattr(part, "tool_name", None),
+                    summary,
+                )
 
 
 if __name__ == "__main__":
